@@ -98,6 +98,12 @@ async function main() {
   const bob = await prisma.user.create({
     data: { email: "bob@company.test", name: "Bob Okafor", role: Role.REVIEWER, createdAt: daysAgo(30) },
   });
+  // A second normal user. Two distinct authors are what make ownership
+  // isolation observable: with only one, "my submissions" and "all
+  // submissions" return the same rows and prove nothing.
+  const carol = await prisma.user.create({
+    data: { email: "carol@company.test", name: "Carol Mendes", role: Role.USER, createdAt: daysAgo(30) },
+  });
 
   // 1. Pending — what the reviewer dashboard should surface first.
   await submit(alice, {
@@ -151,6 +157,25 @@ async function main() {
     at: daysAgo(6, 11),
     reason:
       "Vendor has not completed the security questionnaire. Please attach the completed assessment and resubmit — procurement cannot review the data-sharing terms without it.",
+  });
+
+  // 4. Pending, owned by the SECOND user. Deliberately older than Alice's
+  //    pending item so the reviewer's oldest-first queue leads with a
+  //    different author, and it reuses an existing category so filtering
+  //    returns rows from more than one person.
+  await submit(carol, {
+    title: "Contractor Onboarding Checklist",
+    category: "Policy",
+    at: daysAgo(2),
+    body: [
+      "Proposed standard checklist for onboarding contract staff.",
+      "",
+      "Steps: (1) signed NDA on file before any system access; (2) named",
+      "internal sponsor recorded; (3) least-privilege access request approved",
+      "by the sponsor; (4) end date set on all accounts at creation time.",
+      "",
+      "Applies to contractors only; employee onboarding is unchanged.",
+    ].join("\n"),
   });
 
   const users = await prisma.user.count();
