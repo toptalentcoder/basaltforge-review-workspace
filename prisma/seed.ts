@@ -85,7 +85,8 @@ async function main() {
   // append-only trigger, so a plain TRUNCATE/DELETE is (correctly) rejected;
   // session_replication_role='replica' suspends ordinary triggers for this
   // transaction only. Requires superuser — true for the local compose user,
-  // and exactly the kind of privileged bypass the README's threat model notes.
+  // and exactly the kind of privileged bypass the audit_hardening migration's
+  // threat-model comment calls out.
   await prisma.$transaction([
     prisma.$executeRawUnsafe(`SET LOCAL session_replication_role = 'replica'`),
     prisma.$executeRawUnsafe(`TRUNCATE TABLE audit_events, submissions, users`),
