@@ -1,0 +1,104 @@
+// Prisma is pinned to v6 (see package.json): Prisma 7 moved the datasource URL
+// out of this file into prisma.config.ts, and v6 is the stable, widely-deployed
+// layout. Migrating to v7 is a documented follow-up, not take-home work.
+
+generator client {
+  provider = "prisma-client-js"
+  // The client runs engine-less (Prisma 7's default architecture, GA in v6):
+  // lib/db.ts passes a pg driver adapter, so queries go through the pure-JS
+  // `pg` driver instead of Prisma's native Rust engine binary. Chosen for
+  // portability — no platform-specific engine binaries involved at runtime.
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  REVIEWER
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuditAction {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  submissions Submission[]
+  auditEvents AuditEvent[]
+
+  @@map("users")
+}
+
+model Submission {
+  id        String           @id @default(cuid())
+  title     String           @db.VarChar(200)
+  body      String
+  category  String?          @db.VarChar(50)
+  // Denormalized current state. The AuditEvent trail is the historical record;
+  // status exists as a column because the dashboard filters and sorts on it.
+  status    SubmissionStatus @default(PENDING)
+  authorId  String           @map("author_id")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  // Restrict (not Cascade): a submission with audit history must never be
+  // deletable out from under that history. There is no delete endpoint at all;
+  // this is the schema-level statement of the same rule.
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  auditEvents AuditEvent[]
+
+  // Review queue: WHERE status = ? ORDER BY created_at ASC (pending-oldest-first).
+  @@index([status, createdAt])
+  // "My submissions": WHERE author_id = ? ORDER BY created_at DESC.
+  @@index([authorId, createdAt])
+  @@map("submissions")
+}
+
+// Append-only. No update/delete code path exists for this model, and a
+// database trigger (see the audit_hardening migration) rejects UPDATE, DELETE,
+// and TRUNCATE regardless of what application code does.
+model AuditEvent {
+  id           String            @id @default(cuid())
+  submissionId String            @map("submission_id")
+  actorId      String            @map("actor_id")
+  // Snapshot of the actor's role at the time of the action. The FK answers
+  // "who is this user now"; the snapshot proves what they were authorized as
+  // when they acted, even if their role changes later.
+  actorRole    Role              @map("actor_role")
+  action       AuditAction
+  // fromStatus is null only for SUBMITTED (creation: no prior state).
+  // Status is the only mutable field in the system, so from/to captures the
+  // complete previous-value/new-value diff the audit trail must preserve.
+  fromStatus   SubmissionStatus? @map("from_status")
+  toStatus     SubmissionStatus  @map("to_status")
+  // Required for REJECTED (enforced in the service layer and by a DB CHECK
+  // constraint); optional elsewhere, leaving room for an approval note.
+  reason       String?
+  // Server clock only — never accepted from a client. Deliberately no
+  // updatedAt: rows on an immutable table are never updated.
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  actor      User       @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  // Per-submission history in chronological order. Queries add `id` as a
+  // tiebreaker since same-transaction events share a timestamp.
+  @@index([submissionId, createdAt])
+  @@map("audit_events")
+}

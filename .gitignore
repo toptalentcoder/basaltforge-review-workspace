@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Local-only Postgres cluster used for development on machines without Docker
+.localdb/
+
+# Logs
+*.log
+
+# NOTE: .env is committed deliberately for this take-home — it contains only
+# the local docker-compose connection string, no real secrets.
