@@ -7,6 +7,8 @@ out/
 
 # Local-only Postgres cluster used for development on machines without Docker
 .localdb/
+.env.local
+coverage/
 
 # Logs
 *.log
