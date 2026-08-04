@@ -14,8 +14,16 @@ export async function getAllSubmissions(actor: User, rawFilters: unknown = {}) {
   const where: Prisma.SubmissionWhereInput = {
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.category ? { category: filters.category } : {}),
+    // Search matches the title OR the document body, so a reviewer can find a
+    // document by something written inside it, not just its title. The body is
+    // used only for matching — it is still omitted from the response (below).
     ...(filters.search
-      ? { title: { contains: filters.search, mode: "insensitive" } }
+      ? {
+          OR: [
+            { title: { contains: filters.search, mode: "insensitive" } },
+            { body: { contains: filters.search, mode: "insensitive" } },
+          ],
+        }
       : {}),
   };
   const direction = filters.status === SubmissionStatus.PENDING ? ("asc" as const) : ("desc" as const);
